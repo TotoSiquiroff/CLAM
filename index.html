@@ -2220,9 +2220,14 @@ document.getElementById('btnRestore').addEventListener('click',()=>{
 /* ============================================================
    INIT
 ============================================================ */
-setTimeout(() => {
-    initFirebaseSync();
-}, 500);
+function arrancarFirebase() {
+    if (window.dbOnValue) {
+        initFirebaseSync();
+    } else {
+        setTimeout(arrancarFirebase, 200);
+    }
+}
+arrancarFirebase();
 window.addEventListener('keydown',e=>{
   if(e.key==='Escape'){ closeProductModal(); closeMovementModal(); closeConfirm(); srBox.classList.remove('show'); }
   if(e.key==='Enter' && sellConfirmOpen){ const btn=document.getElementById('btnConfirmSale'); if(btn) btn.click(); }
