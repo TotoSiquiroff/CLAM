@@ -816,46 +816,57 @@ function normalizeState(s){
 }
 let isFirstLoad = true;
 
-function saveState(){
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
-    if (window.dbSet && window.db) {
-      window.dbSet(window.dbRef(window.db, 'kiosco_state'), state);
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ state = normalizeState(JSON.parse(raw)); }
+    else {
+      const oldRaw = localStorage.getItem(LS_KEY_OLD);
+      if(oldRaw){ state = normalizeState(migrateFromV2(JSON.parse(oldRaw))); localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+      else { state = freshState(); }
     }
-  } catch(e) { console.error(e); toast('Error al guardar', false); }
-}
-
-function initFirebaseSync(){
-  if (!window.dbOnValue) {
-     const raw = localStorage.getItem(LS_KEY);
-     if(raw){ state = normalizeState(JSON.parse(raw)); } else { state = freshState(); }
-     renderAll();
-     if(!state.currentUser) openGate();
-     return;
-  }
+  }catch(e){ console.error(e); state = freshState(); }
   
-  window.dbOnValue(window.dbRef(window.db, 'kiosco_state'), (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      state = normalizeState(data);
-    } else {
-      const raw = localStorage.getItem(LS_KEY);
-      if(raw){ state = normalizeState(JSON.parse(raw)); } else { state = freshState(); }
-      saveState();
-    }
-
-    if (isFirstLoad) {
-      isFirstLoad = false;
-      renderAll();
-      if(!state.currentUser) openGate();
-    } else {
-      renderAll();
-    }
-  });
+  const s1 = document.createElement('script');
+  s1.src = "https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js";
+  document.head.appendChild(s1);
+  s1.onload = () => {
+    const s2 = document.createElement('script');
+    s2.src = "https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js";
+    document.head.appendChild(s2);
+    s2.onload = () => {
+      firebase.initializeApp({
+        apiKey: "AIzaSyBQpwRtI7FZr8x1HuLqNFWQAc13M5frMek",
+        authDomain: "clam-efd3c.firebaseapp.com",
+        databaseURL: "https://clam-efd3c-default-rtdb.firebaseio.com",
+        projectId: "clam-efd3c",
+        storageBucket: "clam-efd3c.firebasestorage.app",
+        messagingSenderId: "403022908839",
+        appId: "1:403022908839:web:d14a678c93cd62e8113a82"
+      });
+      window.kioscoDb = firebase.database();
+      window.kioscoDb.ref('kiosco_state').on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          state = normalizeState(data);
+          localStorage.setItem(LS_KEY, JSON.stringify(state));
+          if(!isFirstLoad) renderAll();
+        } else {
+          window.kioscoDb.ref('kiosco_state').set(state);
+        }
+        isFirstLoad = false;
+      });
+    };
+  };
 }
 
-function loadState() {} // Queda vacía
-
+function saveState(){
+  try{ 
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    if(window.kioscoDb) window.kioscoDb.ref('kiosco_state').set(state);
+  }
+  catch(e){ console.error(e); }
+}
 /* ============================================================
    HELPERS: formato, estado, cálculos
 ============================================================ */
@@ -2220,9 +2231,10 @@ document.getElementById('btnRestore').addEventListener('click',()=>{
 /* ============================================================
    INIT
 ============================================================ */
-setTimeout(() => {
-    initFirebaseSync();
-}, 500);
+loadState();
+renderAll();
+if(!state.currentUser) openGate();
+
 window.addEventListener('keydown',e=>{
   if(e.key==='Escape'){ closeProductModal(); closeMovementModal(); closeConfirm(); srBox.classList.remove('show'); }
   if(e.key==='Enter' && sellConfirmOpen){ const btn=document.getElementById('btnConfirmSale'); if(btn) btn.click(); }
