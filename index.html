@@ -650,6 +650,28 @@ td.num,th.num{text-align:right;font-family:var(--font-mono);}
 <div class="toast-wrap" id="toastWrap"></div>
 <div id="printReport"></div>
 
+<!-- CONEXION FIREBASE -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBQpwRtI7FZr8x1HuLqNFWQAc13M5frMek",
+    authDomain: "clam-efd3c.firebaseapp.com",
+    databaseURL: "https://clam-efd3c-default-rtdb.firebaseio.com",
+    projectId: "clam-efd3c",
+    storageBucket: "clam-efd3c.firebasestorage.app",
+    messagingSenderId: "403022908839",
+    appId: "1:403022908839:web:d14a678c93cd62e8113a82"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  window.db = getDatabase(app);
+  window.dbRef = ref;
+  window.dbSet = set;
+  window.dbOnValue = onValue;
+</script>
+
 <script>
 /* ============================================================
    ICONS
@@ -687,7 +709,7 @@ const SEED_PRODUCTS = [
   {name:'Papas Lays'},
   {name:'Alfajor Guayma'},
   {name:'Alfajor rasta blanco'},
-  {name:'Alfajor Rasta negro', variantType:'select', variantLabel:'¿Cuál?', variantOptions:['Negro','Blanco']},
+  {name:'Alfajor Rasta negro', variantType:'text', variantLabel:'Aclarar cuál', variantPlaceholder:'Escribí cuál es'},
   {name:'Doritos dinamita'},
   {name:'Doritos'},
   {name:'Speed'},
@@ -706,7 +728,7 @@ const CATEGORY_COLORS = ['#141519','#68696f','#a7a8b0','#c7c8ce'];
 /* ============================================================
    STATE / STORAGE / MIGRACIÓN
 ============================================================ */
-const LS_KEY = 'clam_kiosco_state_v4';
+const LS_KEY = 'clam_kiosco_state_v3';
 const LS_KEY_OLD = 'clam_kiosco_state_v2';
 let state = null;
 
@@ -792,17 +814,47 @@ function normalizeState(s){
   });
   return s;
 }
-function loadState(){
-  try{
-    const raw = localStorage.getItem(LS_KEY);
-    if(raw){ state = normalizeState(JSON.parse(raw)); return; }
-    state = freshState(); saveState();
-  }catch(e){ console.error(e); state = freshState(); }
-}
+let isFirstLoad = true;
+
 function saveState(){
-  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  catch(e){ console.error(e); toast('No se pudo guardar (almacenamiento lleno). Hacé un backup y liberá espacio.', false); }
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    if (window.dbSet && window.db) {
+      window.dbSet(window.dbRef(window.db, 'kiosco_state'), state);
+    }
+  } catch(e) { console.error(e); toast('Error al guardar', false); }
 }
+
+function initFirebaseSync(){
+  if (!window.dbOnValue) {
+     const raw = localStorage.getItem(LS_KEY);
+     if(raw){ state = normalizeState(JSON.parse(raw)); } else { state = freshState(); }
+     renderAll();
+     if(!state.currentUser) openGate();
+     return;
+  }
+  
+  window.dbOnValue(window.dbRef(window.db, 'kiosco_state'), (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      state = normalizeState(data);
+    } else {
+      const raw = localStorage.getItem(LS_KEY);
+      if(raw){ state = normalizeState(JSON.parse(raw)); } else { state = freshState(); }
+      saveState();
+    }
+
+    if (isFirstLoad) {
+      isFirstLoad = false;
+      renderAll();
+      if(!state.currentUser) openGate();
+    } else {
+      renderAll();
+    }
+  });
+}
+
+function loadState() {} // Queda vacía
 
 /* ============================================================
    HELPERS: formato, estado, cálculos
@@ -2168,9 +2220,9 @@ document.getElementById('btnRestore').addEventListener('click',()=>{
 /* ============================================================
    INIT
 ============================================================ */
-loadState();
-renderAll();
-if(!state.currentUser) openGate();
+setTimeout(() => {
+    initFirebaseSync();
+}, 500);
 window.addEventListener('keydown',e=>{
   if(e.key==='Escape'){ closeProductModal(); closeMovementModal(); closeConfirm(); srBox.classList.remove('show'); }
   if(e.key==='Enter' && sellConfirmOpen){ const btn=document.getElementById('btnConfirmSale'); if(btn) btn.click(); }
